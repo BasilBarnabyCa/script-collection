@@ -270,3 +270,5 @@ EOF
 chmod 644 /home/ubuntu/README.TXT
 chown ubuntu:ubuntu /home/ubuntu/README.TXT
 )  | tee /var/log/provision.log
+
+sudo reboot
