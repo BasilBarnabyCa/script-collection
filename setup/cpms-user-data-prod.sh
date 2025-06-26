@@ -150,6 +150,35 @@ sudo chown -R www-data:www-data $APP_DIR
 sudo chmod -R 775 $APP_DIR/storage $APP_DIR/bootstrap/cache
 
 echo "✅ .env configured, Laravel keys generated, and permissions fixed."
+
+if [ -d "/var/www/core/public" ]; then
+    # === Configure Apache Virtual Host ===
+    cat << 'EOVHOST' > /etc/apache2/sites-available/svrel.conf
+    <VirtualHost *:80>
+        ServerAdmin admin@caymanasracing.com
+        ServerName core3003.caymanasracing.com
+        ServerAlias core3003.caymanasracing.com
+        <Directory /var/www/core>
+            Options Indexes FollowSymLinks MultiViews
+            AllowOverride All
+            Require all granted
+        </Directory>
+        DocumentRoot "/var/www/core/public"
+        Header always set Access-Control-Allow-Origin "*"
+        Header always set Access-Control-Allow-Headers "Content-Type, X-CSRF-TOKEN, X-Requested-With, Authorization"
+        ErrorLog \${APACHE_LOG_DIR}/error.log
+        CustomLog \${APACHE_LOG_DIR}/access.log combined
+    </VirtualHost>
+    EOVHOST
+    
+    a2dissite 000-default.conf
+    a2ensite svrel.conf
+    systemctl reload apache2
+    
+    echo "✅ Apache virtual host 'svrel.conf' enabled."
+else
+  echo "⚠️ Skipping vhost setup — /var/www/core/public does not exist yet."
+fi
 EOF
 
 chmod +x /home/ubuntu/setup.sh
