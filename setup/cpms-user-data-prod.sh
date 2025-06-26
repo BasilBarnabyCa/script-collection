@@ -1,74 +1,84 @@
 #!/bin/bash
+# === Only for use on Ubuntu 22.04 ===
 (
+trap 'echo "❌ Error on line $LINENO: $BASH_COMMAND" | tee -a /var/log/provision.log' ERR
 set -euo pipefail
+
+log() {
+    echo -e "\n===== $1 =====\n" | tee -a /var/log/provision.log
+}
+
+log "🟢 STARTING PROVISION SCRIPT"
 
 # === Initial Setup ===
 export DEBIAN_FRONTEND=noninteractive
+log "🔄 apt update & upgrade"
 apt update -y && apt upgrade -y
 
 # === Basic Tools ===
+log "🔧 Installing basic tools (curl, git, unzip, etc.)"
 apt install -y software-properties-common curl unzip git ufw
 
 # === Add PHP PPA ===
+log "➕ Adding PHP PPA"
 add-apt-repository ppa:ondrej/php -y
 apt update -y
 
-# === Install PHP 8.1 and Required Extensions ===
+# === Install PHP 8.1 and Extensions ===
+log "🐘 Installing PHP 8.1 and extensions"
 apt install -y php8.1 php8.1-fpm php8.1-cli php8.1-mysql php8.1-curl php8.1-mbstring \
 php8.1-xml php8.1-bcmath php8.1-zip php8.1-gd php8.1-soap php8.1-common
 
 # === Install Apache ===
+log "🌐 Installing Apache"
 apt install -y apache2
-a2enmod rewrite headers proxy_fcgi setenvif
-a2enconf php8.1-fpm
-a2dismod php8.1
-systemctl enable apache2
 
-# === Tune PHP-FPM Workers ===
-FPM_POOL_CONF="/etc/php/8.1/fpm/pool.d/www.conf"
+log "🛠 Enabling Apache modules"
+a2enmod rewrite headers proxy_fcgi setenvif | tee -a /var/log/provision.log
 
-sed -i 's/^pm = .*/pm = dynamic/' $FPM_POOL_CONF
-sed -i 's/^pm.max_children = .*/pm.max_children = 15/' $FPM_POOL_CONF
-sed -i 's/^pm.start_servers = .*/pm.start_servers = 4/' $FPM_POOL_CONF
-sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 4/' $FPM_POOL_CONF
-sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 6/' $FPM_POOL_CONF
-sed -i 's/^pm.max_requests = .*/pm.max_requests = 500/' $FPM_POOL_CONF
+log "⚙️ Enabling php8.1-fpm conf"
+a2enconf php8.1-fpm | tee -a /var/log/provision.log
 
-systemctl restart php8.1-fpm
+log "🚫 Disabling PHP 8.1 module (if needed)"
+a2dismod php8.1 || echo "php8.1 already disabled or not found" | tee -a /var/log/provision.log
 
-# === Install MySQL Server ===
-apt install -y mysql-server
+log "📌 Enabling apache2 service"
+systemctl enable apache2 | tee -a /var/log/provision.log
 
-# === Setup UFW ===
-ufw allow OpenSSH
-ufw allow 'Apache Full'
-ufw --force enable
-
-# === Install Composer ===
-/usr/bin/php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-/usr/bin/php composer-setup.php --install-dir=/usr/local/bin --filename=composer
-rm composer-setup.php
+# === Install MySQL Server with Retry ===
+log "🗄 Installing MySQL Server"
+apt-get clean && apt-get autoclean
+for i in {1..3}; do
+    echo "Attempt $i to install mysql-server..." | tee -a /var/log/provision.log
+    if apt install -y mysql-server; then
+        echo "✅ mysql-server installed successfully" | tee -a /var/log/provision.log
+        break
+    else
+        echo "⚠️ mysql-server install failed, retrying in 10s..." | tee -a /var/log/provision.log
+        sleep 10
+    fi
+done
 
 # === Setup Laravel Directories ===
+log "📁 Creating Laravel app and Git repo directories"
 APP_DIR="/var/www/cpms"
 GIT_DIR="/var/repo/cpms.git"
-
 mkdir -p "$APP_DIR"
 git init --bare "$GIT_DIR"
 chown -R ubuntu:ubuntu "$APP_DIR" "$GIT_DIR"
 
-# === Post-Receive Hook Script ===
+# === Post-Receive Hook ===
+log "📦 Creating Git post-receive hook"
 cat << EOF > "$GIT_DIR/hooks/post-receive"
 #!/bin/bash
-
 APP_DIR="$APP_DIR"
 GIT_DIR="$GIT_DIR"
 
 echo ">>> Deploying Laravel to \$APP_DIR..."
 
 git --work-tree=\$APP_DIR --git-dir=\$GIT_DIR checkout -f
-
 cd \$APP_DIR
+
 composer install --no-dev --optimize-autoloader
 php artisan config:cache
 php artisan route:cache
@@ -86,25 +96,42 @@ echo ">>> Deployment complete ✅"
 EOF
 
 chmod +x "$GIT_DIR/hooks/post-receive"
-
-# === Final Permissions ===
 chown -R www-data:www-data "$GIT_DIR"
 
 # === Apache Restart ===
+log "🔁 Restarting Apache"
 systemctl restart apache2
 
-# === Create setup.sh Script ===
-cat << EOF > /home/ubuntu/setup.sh
+# === Create setup.sh ===
+log "📝 Creating setup.sh script"
+cat << 'EOF' > /home/ubuntu/setup.sh
 #!/bin/bash
 
-APP_DIR="$APP_DIR"
+LOG_FILE="/var/log/setup.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+set -euo pipefail
+
+log() {
+    echo -e "\n===== $1 =====\n"
+}
+
+log "🟢 Starting setup.sh at $(date)"
+
+log "🎼 Installing Composer as current user..."
+cd /tmp
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+sudo chmod +x /usr/local/bin/composer
+composer --version
+
+log "📝 Laravel .env Setup"
+APP_DIR="/var/www/cpms"
 ENV_FILE="\$APP_DIR/.env"
 
 if [ ! -f "\$ENV_FILE" ]; then
+    log "📄 Copying .env.example to .env"
     cp "\$APP_DIR/.env.example" "\$ENV_FILE"
 fi
-
-echo "=== Laravel .env Setup ==="
 
 read -p "APP_NAME: " APP_NAME
 read -p "APP_ENV (e.g. production): " APP_ENV
@@ -124,6 +151,7 @@ read -p "AWS_BUCKET: " AWS_BUCKET
 read -p "AWS_URL: " AWS_URL
 read -p "OPEN_WEATHER_API_KEY: " OPEN_WEATHER_API_KEY
 
+log "🔧 Replacing environment values in .env"
 sed -i "s|^APP_NAME=.*|APP_NAME=\"\$APP_NAME\"|" \$ENV_FILE
 sed -i "s|^APP_ENV=.*|APP_ENV=\$APP_ENV|" \$ENV_FILE
 sed -i "s|^APP_URL=.*|APP_URL=\$APP_URL|" \$ENV_FILE
@@ -143,49 +171,51 @@ sed -i "s|^AWS_URL=.*|AWS_URL=\$AWS_URL|" \$ENV_FILE
 sed -i "s|^OPEN_WEATHER_API_KEY=.*|OPEN_WEATHER_API_KEY=\$OPEN_WEATHER_API_KEY|" \$ENV_FILE
 
 cd \$APP_DIR
+log "🔑 Running Laravel key and Passport installation"
 php artisan key:generate
 php artisan passport:install
 
-# Fix permissions
-sudo chown -R www-data:www-data $APP_DIR
-sudo chmod -R 775 $APP_DIR/storage $APP_DIR/bootstrap/cache
+log "🔒 Fixing permissions for storage and cache"
+chown -R www-data:www-data \$APP_DIR
+chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
-echo "✅ .env configured, Laravel keys generated, and permissions fixed."
+log "✅ .env configured, Laravel keys generated, permissions fixed."
 
 if [ -d "/var/www/core/public" ]; then
-    # === Configure Apache Virtual Host ===
+    log "🛠 Creating and enabling Apache vhost for core3003"
     cat << 'EOVHOST' > /etc/apache2/sites-available/svrel.conf
-    <VirtualHost *:80>
-        ServerAdmin admin@caymanasracing.com
-        ServerName core3003.caymanasracing.com
-        ServerAlias core3003.caymanasracing.com
-        <Directory /var/www/core>
-            Options Indexes FollowSymLinks MultiViews
-            AllowOverride All
-            Require all granted
-        </Directory>
-        DocumentRoot "/var/www/core/public"
-        Header always set Access-Control-Allow-Origin "*"
-        Header always set Access-Control-Allow-Headers "Content-Type, X-CSRF-TOKEN, X-Requested-With, Authorization"
-        ErrorLog \${APACHE_LOG_DIR}/error.log
-        CustomLog \${APACHE_LOG_DIR}/access.log combined
-    </VirtualHost>
-    EOVHOST
-    
+<VirtualHost *:80>
+    ServerAdmin admin@caymanasracing.com
+    ServerName core3003.caymanasracing.com
+    ServerAlias core3003.caymanasracing.com
+    <Directory /var/www/core>
+        Options Indexes FollowSymLinks MultiViews
+        AllowOverride All
+        Require all granted
+    </Directory>
+    DocumentRoot "/var/www/core/public"
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Headers "Content-Type, X-CSRF-TOKEN, X-Requested-With, Authorization"
+    ErrorLog \${APACHE_LOG_DIR}/error.log
+    CustomLog \${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+EOVHOST
+
     a2dissite 000-default.conf
     a2ensite svrel.conf
     systemctl reload apache2
-    
-    echo "✅ Apache virtual host 'svrel.conf' enabled."
+
+    log "✅ Apache virtual host 'svrel.conf' enabled."
 else
-  echo "⚠️ Skipping vhost setup — /var/www/core/public does not exist yet."
+    log "⚠️ Skipping vhost setup — /var/www/core/public does not exist yet."
 fi
 EOF
 
 chmod +x /home/ubuntu/setup.sh
 chown ubuntu:ubuntu /home/ubuntu/setup.sh
 
-# === Create README.TXT with Pre-Setup Instructions ===
+# === README.TXT ===
+log "📘 Creating README.TXT with instructions"
 cat << 'EOF' > /home/ubuntu/README.TXT
 CPMS SERVER – PRE-SETUP INSTRUCTIONS
 ====================================
@@ -216,7 +246,7 @@ Make sure the database name matches what you will enter during the setup prompts
 
 3. Laravel Project Must Be Pushed
 -----------------------------------
-Your Laravel project must already be deployed via Git to `/var/www/cpms` using the post-receive hook setup. 
+Your Laravel project must already be deployed via Git to /var/www/cpms using the post-receive hook setup. 
 
 From your local machine, run:
 
@@ -225,23 +255,23 @@ From your local machine, run:
 
 This will install dependencies and deploy the code.
 
-4. Ready to Run `setup.sh`
+4. Ready to Run setup.sh
 ------------------------------
 Once all steps above are complete, run:
 
     sudo bash /home/ubuntu/setup.sh
 
 This script will:
-- Prompt for necessary `.env` values
+- Prompt for necessary .env values
 - Generate app key and install Passport
 - Fix file permissions
-- Optionally enable Apache virtual host if `/var/www/core/public` exists
+- Optionally enable Apache virtual host if /var/www/core/public exists
 
-✅ Required `.env` Variables Prompted by `setup.sh`
+✅ Required .env Variables Prompted by setup.sh
 
 Prepare the following values before running the script:
 
-```env
+env
 APP_NAME=
 APP_ENV=
 APP_URL=
@@ -270,9 +300,36 @@ EOF
 chmod 644 /home/ubuntu/README.TXT
 chown ubuntu:ubuntu /home/ubuntu/README.TXT
 
-# === Final Update and upgrade ===
+# === Tune PHP-FPM ===
+log "⚙️ Tuning PHP-FPM workers"
+FPM_POOL_CONF="/etc/php/8.1/fpm/pool.d/www.conf"
+PHP_INI="/etc/php/8.1/fpm/php.ini"
+
+# Tuning pool settings
+sed -i 's|^;*\s*pm\s*=.*|pm = dynamic|' "$FPM_POOL_CONF"
+sed -i 's|^;*\s*pm\.max_children\s*=.*|pm.max_children = 15|' "$FPM_POOL_CONF"
+sed -i 's|^;*\s*pm\.start_servers\s*=.*|pm.start_servers = 4|' "$FPM_POOL_CONF"
+sed -i 's|^;*\s*pm\.min_spare_servers\s*=.*|pm.min_spare_servers = 4|' "$FPM_POOL_CONF"
+sed -i 's|^;*\s*pm\.max_spare_servers\s*=.*|pm.max_spare_servers = 6|' "$FPM_POOL_CONF"
+sed -i 's|^;*\s*pm\.max_requests\s*=.*|pm.max_requests = 500|' "$FPM_POOL_CONF"
+
+# Set cgi.fix_pathinfo=0
+sed -i 's|^;*\s*cgi\.fix_pathinfo\s*=.*|cgi.fix_pathinfo=0|' "$PHP_INI"
+
+# Restart FPM
+systemctl restart php8.1-fpm
+
+# === UFW Setup ===
+log "🧱 Configuring UFW firewall"
+ufw allow OpenSSH
+ufw allow 'Apache Full'
+ufw --force enable
+
+log "✅ PROVISIONING COMPLETE"
+log "🔁 Rebooting now"
+
+) | tee /var/log/provision.log
+
 apt update -y && apt upgrade -y
-
-)  | tee /var/log/provision.log
-
+sleep 15
 sudo reboot
