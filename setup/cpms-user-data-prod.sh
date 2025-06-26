@@ -45,9 +45,9 @@ ufw allow 'Apache Full'
 ufw --force enable
 
 # === Install Composer ===
-curl -sS https://getcomposer.org/installer | php
-sudo mv composer.phar /usr/local/bin/composer
-sudo chmod +x /usr/local/bin/composer
+/usr/bin/php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+/usr/bin/php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+rm composer-setup.php
 
 # === Setup Laravel Directories ===
 APP_DIR="/var/www/cpms"
