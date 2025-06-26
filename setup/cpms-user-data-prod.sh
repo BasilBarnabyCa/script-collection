@@ -65,38 +65,52 @@ APP_DIR="/var/www/cpms"
 GIT_DIR="/var/repo/cpms.git"
 mkdir -p "$APP_DIR"
 git init --bare "$GIT_DIR"
-chown -R ubuntu:ubuntu "$APP_DIR" "$GIT_DIR"
+chown -R ubuntu:ubuntu "$GIT_DIR"
+chown -R www-data:www-data "$APP_DIR"
 
 # === Post-Receive Hook ===
 log "📦 Creating Git post-receive hook"
-cat << EOF > "$GIT_DIR/hooks/post-receive"
+cat << 'EOF' > "$GIT_DIR/hooks/post-receive"
 #!/bin/bash
-APP_DIR="$APP_DIR"
-GIT_DIR="$GIT_DIR"
+
+APP_DIR="/var/www/cpms"
+GIT_DIR="/var/repo/cpms.git"
+DEPLOY_USER="ubuntu"
+WEB_USER="www-data"
 
 echo ">>> Deploying Laravel to \$APP_DIR..."
 
+# Ensure the deploy user owns the directory for Git write
+chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
+
+# Checkout latest code
 git --work-tree=\$APP_DIR --git-dir=\$GIT_DIR checkout -f
-cd \$APP_DIR
 
-composer install --no-dev --optimize-autoloader
-php artisan config:cache
-php artisan route:cache
+# Set ownership so Composer can run (still under deploy user)
+chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
 
-if [ -f "\$APP_DIR/.env" ]; then
+# Switch to deploy user for Composer + Artisan commands
+sudo -u \$DEPLOY_USER bash << 'INNER'
+cd /var/www/cpms
+
+if command -v composer >/dev/null 2>&1 && [ -f ".env" ]; then
+    composer install --no-dev --optimize-autoloader
+    php artisan config:cache
+    php artisan route:cache
     php artisan migrate --force
 else
-    echo "⚠️ Skipping migrations — .env not found."
+    echo "⚠️ Skipping Composer and Artisan commands — Composer not found or .env missing"
 fi
+INNER
 
-chown -R www-data:www-data \$APP_DIR
+# Restore web server permissions for runtime
+chown -R \$WEB_USER:\$WEB_USER \$APP_DIR
 chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
 echo ">>> Deployment complete ✅"
 EOF
 
 chmod +x "$GIT_DIR/hooks/post-receive"
-chown -R www-data:www-data "$GIT_DIR"
 
 # === Apache Restart ===
 log "🔁 Restarting Apache"
