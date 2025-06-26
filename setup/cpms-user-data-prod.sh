@@ -269,6 +269,10 @@ EOF
 
 chmod 644 /home/ubuntu/README.TXT
 chown ubuntu:ubuntu /home/ubuntu/README.TXT
+
+# === Final Update and upgrade ===
+apt update -y && apt upgrade -y
+
 )  | tee /var/log/provision.log
 
 sudo reboot
