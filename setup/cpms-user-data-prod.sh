@@ -1,4 +1,6 @@
 #!/bin/bash
+(
+set -euo pipefail
 
 # === Initial Setup ===
 export DEBIAN_FRONTEND=noninteractive
@@ -43,9 +45,9 @@ ufw allow 'Apache Full'
 ufw --force enable
 
 # === Install Composer ===
-curl -sS https://getcomposer.org/installer -o composer-setup.php
-php composer-setup.php --install-dir=/usr/local/bin --filename=composer
-rm composer-setup.php
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+sudo chmod +x /usr/local/bin/composer
 
 # === Setup Laravel Directories ===
 APP_DIR="/var/www/cpms"
@@ -78,7 +80,7 @@ else
 fi
 
 chown -R www-data:www-data \$APP_DIR
-chmod -R 775 storage bootstrap/cache
+chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
 echo ">>> Deployment complete ✅"
 EOF
@@ -87,7 +89,6 @@ chmod +x "$GIT_DIR/hooks/post-receive"
 
 # === Final Permissions ===
 chown -R www-data:www-data "$GIT_DIR"
-chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
 
 # === Apache Restart ===
 systemctl restart apache2
@@ -268,3 +269,4 @@ EOF
 
 chmod 644 /home/ubuntu/README.TXT
 chown ubuntu:ubuntu /home/ubuntu/README.TXT
+)  | tee /var/log/provision.log
