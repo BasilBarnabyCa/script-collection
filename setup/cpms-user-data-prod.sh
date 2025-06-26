@@ -38,7 +38,7 @@ APP_DIR="/var/www/cpms"
 REPO_DIR="/var/repo/cpms.git"
 
 mkdir -p $APP_DIR
-mkdir -p $REPO_DIR
+git init --bare $REPO_DIR
 chown -R ubuntu:ubuntu $APP_DIR $REPO_DIR
 
 # === Post-Receive Hook Script ===
