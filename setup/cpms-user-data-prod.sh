@@ -80,9 +80,9 @@ WEB_USER="www-data"
 
 echo ">>> Deploying Laravel to \$APP_DIR..."
 
-chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
+sudo chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
 git --work-tree=\$APP_DIR --git-dir=\$GIT_DIR checkout -f
-chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
+sudo chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
 
 sudo -u \$DEPLOY_USER bash << 'INNER'
 cd /var/www/cpms
@@ -97,8 +97,8 @@ else
 fi
 INNER
 
-chown -R \$WEB_USER:\$WEB_USER \$APP_DIR
-chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
+sudo chown -R \$WEB_USER:\$WEB_USER \$APP_DIR
+sudo chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
 echo ">>> Deployment complete ✅"
 EOF
