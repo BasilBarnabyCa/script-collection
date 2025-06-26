@@ -1,0 +1,27 @@
+#!/bin/bash
+
+APP_DIR="/var/www/cpms"
+GIT_DIR="/var/repo/cpms.git"
+
+echo ">>> Deploying Laravel to $APP_DIR..."
+
+# Checkout code
+git --work-tree=$APP_DIR --git-dir=$GIT_DIR checkout -f
+
+# Laravel deploy steps
+cd $APP_DIR
+composer install --no-dev --optimize-autoloader
+php artisan config:cache
+php artisan route:cache
+
+if [ -f "$APP_DIR/.env" ]; then
+    php artisan migrate --force
+else
+    echo "⚠️ Skipping migrations — .env not found."
+fi
+
+# Permissions
+chown -R www-data:www-data $APP_DIR
+chmod -R 775 storage bootstrap/cache
+
+echo ">>> Deployment complete ✅"
