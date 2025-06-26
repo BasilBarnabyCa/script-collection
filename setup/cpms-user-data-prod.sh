@@ -16,9 +16,23 @@ apt install -y php8.1 php8.1-fpm php8.1-cli php8.1-mysql php8.1-curl php8.1-mbst
 php8.1-xml php8.1-bcmath php8.1-zip php8.1-gd php8.1-soap php8.1-common
 
 # === Install Apache ===
-apt install -y apache2 libapache2-mod-php8.1
-a2enmod php8.1 rewrite headers
+apt install -y apache2
+a2enmod rewrite headers proxy_fcgi setenvif
+a2enconf php8.1-fpm
+a2dismod php8.1
 systemctl enable apache2
+
+# === Tune PHP-FPM Workers ===
+FPM_POOL_CONF="/etc/php/8.1/fpm/pool.d/www.conf"
+
+sed -i 's/^pm = .*/pm = dynamic/' $FPM_POOL_CONF
+sed -i 's/^pm.max_children = .*/pm.max_children = 15/' $FPM_POOL_CONF
+sed -i 's/^pm.start_servers = .*/pm.start_servers = 4/' $FPM_POOL_CONF
+sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 4/' $FPM_POOL_CONF
+sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 6/' $FPM_POOL_CONF
+sed -i 's/^pm.max_requests = .*/pm.max_requests = 500/' $FPM_POOL_CONF
+
+systemctl restart php8.1-fpm
 
 # === Install MySQL Server ===
 apt install -y mysql-server
@@ -78,8 +92,8 @@ chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
 # === Apache Restart ===
 systemctl restart apache2
 
-# === Create setup-env.sh Script ===
-cat << EOF > /home/ubuntu/setup-env.sh
+# === Create setup.sh Script ===
+cat << EOF > /home/ubuntu/setup.sh
 #!/bin/bash
 
 APP_DIR="$APP_DIR"
@@ -138,5 +152,5 @@ sudo chmod -R 775 $APP_DIR/storage $APP_DIR/bootstrap/cache
 echo "✅ .env configured, Laravel keys generated, and permissions fixed."
 EOF
 
-chmod +x /home/ubuntu/setup-env.sh
-chown ubuntu:ubuntu /home/ubuntu/setup-env.sh
+chmod +x /home/ubuntu/setup.sh
+chown ubuntu:ubuntu /home/ubuntu/setup.sh
