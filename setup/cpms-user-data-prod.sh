@@ -70,7 +70,7 @@ chown -R www-data:www-data "$APP_DIR"
 
 # === Post-Receive Hook ===
 log "📦 Creating Git post-receive hook"
-cat << 'EOF' > "$GIT_DIR/hooks/post-receive"
+cat << EOF > "$GIT_DIR/hooks/post-receive"
 #!/bin/bash
 
 APP_DIR="/var/www/cpms"
@@ -80,16 +80,10 @@ WEB_USER="www-data"
 
 echo ">>> Deploying Laravel to \$APP_DIR..."
 
-# Ensure the deploy user owns the directory for Git write
 chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
-
-# Checkout latest code
 git --work-tree=\$APP_DIR --git-dir=\$GIT_DIR checkout -f
-
-# Set ownership so Composer can run (still under deploy user)
 chown -R \$DEPLOY_USER:\$DEPLOY_USER \$APP_DIR
 
-# Switch to deploy user for Composer + Artisan commands
 sudo -u \$DEPLOY_USER bash << 'INNER'
 cd /var/www/cpms
 
@@ -103,7 +97,6 @@ else
 fi
 INNER
 
-# Restore web server permissions for runtime
 chown -R \$WEB_USER:\$WEB_USER \$APP_DIR
 chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
