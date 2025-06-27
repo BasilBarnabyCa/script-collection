@@ -33,23 +33,28 @@ php8.1-xml php8.1-bcmath php8.1-zip php8.1-gd php8.1-soap php8.1-common
 log "🌐 Installing Apache"
 apt install -y apache2
 
-a2enmod rewrite headers proxy_fcgi setenvif
+log "🛠 Enabling Apache modules"
+a2enmod rewrite headers proxy_fcgi setenvif | tee -a /var/log/provision.log
 
-a2enconf php8.1-fpm || true
-a2dismod php8.1 || echo "php8.1 already disabled or not found"
+log "⚙️ Enabling php8.1-fpm conf"
+a2enconf php8.1-fpm | tee -a /var/log/provision.log
 
-systemctl enable apache2
+log "🚫 Disabling PHP 8.1 module (if needed)"
+a2dismod php8.1 || echo "php8.1 already disabled or not found" | tee -a /var/log/provision.log
+
+log "📌 Enabling apache2 service"
+systemctl enable apache2 | tee -a /var/log/provision.log
 
 # === Install MySQL Server with Retry ===
 log "🗄 Installing MySQL Server"
 apt-get clean && apt-get autoclean
 for i in {1..3}; do
-    echo "Attempt $i to install mysql-server..."
+    echo "Attempt $i to install mysql-server..." | tee -a /var/log/provision.log
     if apt install -y mysql-server; then
-        echo "✅ mysql-server installed successfully"
+        echo "✅ mysql-server installed successfully" | tee -a /var/log/provision.log
         break
     else
-        echo "⚠️ mysql-server install failed, retrying in 10s..."
+        echo "⚠️ mysql-server install failed, retrying in 10s..." | tee -a /var/log/provision.log
         sleep 10
     fi
 done
