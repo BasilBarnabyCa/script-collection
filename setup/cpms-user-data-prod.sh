@@ -333,6 +333,24 @@ sed -i 's|^;*\s*pm\.max_requests\s*=.*|pm.max_requests = 500|' "$FPM_POOL_CONF"
 # Set cgi.fix_pathinfo=0
 sed -i 's|^;*\s*cgi\.fix_pathinfo\s*=.*|cgi.fix_pathinfo=0|' "$PHP_INI"
 
+# === Tune PHP OPcache ===
+OPCACHE_INI="/etc/php/8.1/fpm/conf.d/10-opcache.ini"
+
+cat << EOF > $OPCACHE_INI
+zend_extension=opcache.so
+
+opcache.enable=1
+opcache.enable_cli=1
+opcache.memory_consumption=256
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=20000
+opcache.revalidate_freq=60
+opcache.validate_timestamps=1
+opcache.save_comments=1
+opcache.fast_shutdown=1
+opcache.enable_file_override=0
+EOF
+
 # Restart FPM
 systemctl restart php8.1-fpm
 
