@@ -73,8 +73,8 @@ log "📦 Creating Git post-receive hook"
 cat << EOF > "$GIT_DIR/hooks/post-receive"
 #!/bin/bash
 
-APP_DIR="/var/www/cpms"
-GIT_DIR="/var/repo/cpms.git"
+APP_DIR="$APP_DIR"
+GIT_DIR="$GIT_DIR"
 DEPLOY_USER="ubuntu"
 WEB_USER="www-data"
 
@@ -111,18 +111,18 @@ systemctl restart apache2
 
 # === Create setup.sh ===
 log "📝 Creating setup.sh script"
-cat << 'EOF' > /home/ubuntu/setup.sh
+cat << EOF > /home/ubuntu/setup.sh
 #!/bin/bash
 
-LOG_FILE="/var/log/setup.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
+LOG_FILE="/home/ubuntu/setup.log"
+exec > >(tee -a "\$LOG_FILE") 2>&1
 set -euo pipefail
 
 log() {
-    echo -e "\n===== $1 =====\n"
+    echo -e "\n===== \$1 =====\n"
 }
 
-log "🟢 Starting setup.sh at $(date)"
+log "🟢 Starting setup.sh at \$(date)"
 
 log "🎼 Installing Composer as current user..."
 cd /tmp
@@ -132,75 +132,84 @@ sudo chmod +x /usr/local/bin/composer
 composer --version
 
 log "📝 Laravel .env Setup"
-APP_DIR="/var/www/cpms"
-ENV_FILE="\$APP_DIR/.env"
+APP_DIR="$APP_DIR"
+ENV_FILE="$APP_DIR/.env"
+
+log "🔓 Temporarily changing ownership of $APP_DIR to ubuntu"
+sudo chown -R ubuntu:ubuntu "$APP_DIR"
+
+if [ ! -f "\$APP_DIR/.env.example" ]; then
+    log "❌ .env.example not found in \$APP_DIR"
+    exit 1
+fi
 
 if [ ! -f "\$ENV_FILE" ]; then
     log "📄 Copying .env.example to .env"
     cp "\$APP_DIR/.env.example" "\$ENV_FILE"
+    
+    read -p "APP_NAME: " APP_NAME
+    read -p "APP_ENV (e.g. production): " APP_ENV
+    read -p "APP_URL (e.g. https://cpms.example.com): " APP_URL
+    read -p "DB_DATABASE: " DB_DATABASE
+    read -p "DB_USERNAME: " DB_USERNAME
+    read -s -p "DB_PASSWORD: " DB_PASSWORD; echo
+    read -p "MAIL_HOST: " MAIL_HOST
+    read -p "MAIL_PORT: " MAIL_PORT
+    read -p "MAIL_USERNAME: " MAIL_USERNAME
+    read -s -p "MAIL_PASSWORD: " MAIL_PASSWORD; echo
+    read -p "MAIL_ENCRYPTION (tls/ssl): " MAIL_ENCRYPTION
+    read -p "AWS_ACCESS_KEY_ID: " AWS_ACCESS_KEY_ID
+    read -p "AWS_SECRET_ACCESS_KEY: " AWS_SECRET_ACCESS_KEY
+    read -p "AWS_DEFAULT_REGION: " AWS_DEFAULT_REGION
+    read -p "AWS_BUCKET: " AWS_BUCKET
+    read -p "AWS_URL: " AWS_URL
+    read -p "OPEN_WEATHER_API_KEY: " OPEN_WEATHER_API_KEY
+    
+    log "🔧 Replacing environment values in .env"
+    sed -i "s|^APP_NAME=.*|APP_NAME=\"\$APP_NAME\"|" \$ENV_FILE
+    sed -i "s|^APP_ENV=.*|APP_ENV=\$APP_ENV|" \$ENV_FILE
+    sed -i "s|^APP_URL=.*|APP_URL=\$APP_URL|" \$ENV_FILE
+    sed -i "s|^DB_DATABASE=.*|DB_DATABASE=\$DB_DATABASE|" \$ENV_FILE
+    sed -i "s|^DB_USERNAME=.*|DB_USERNAME=\$DB_USERNAME|" \$ENV_FILE
+    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=\$DB_PASSWORD|" \$ENV_FILE
+    sed -i "s|^MAIL_HOST=.*|MAIL_HOST=\$MAIL_HOST|" \$ENV_FILE
+    sed -i "s|^MAIL_PORT=.*|MAIL_PORT=\$MAIL_PORT|" \$ENV_FILE
+    sed -i "s|^MAIL_USERNAME=.*|MAIL_USERNAME=\$MAIL_USERNAME|" \$ENV_FILE
+    sed -i "s|^MAIL_PASSWORD=.*|MAIL_PASSWORD=\$MAIL_PASSWORD|" \$ENV_FILE
+    sed -i "s|^MAIL_ENCRYPTION=.*|MAIL_ENCRYPTION=\$MAIL_ENCRYPTION|" \$ENV_FILE
+    sed -i "s|^AWS_ACCESS_KEY_ID=.*|AWS_ACCESS_KEY_ID=\$AWS_ACCESS_KEY_ID|" \$ENV_FILE
+    sed -i "s|^AWS_SECRET_ACCESS_KEY=.*|AWS_SECRET_ACCESS_KEY=\$AWS_SECRET_ACCESS_KEY|" \$ENV_FILE
+    sed -i "s|^AWS_DEFAULT_REGION=.*|AWS_DEFAULT_REGION=\$AWS_DEFAULT_REGION|" \$ENV_FILE
+    sed -i "s|^AWS_BUCKET=.*|AWS_BUCKET=\$AWS_BUCKET|" \$ENV_FILE
+    sed -i "s|^AWS_URL=.*|AWS_URL=\$AWS_URL|" \$ENV_FILE
+    sed -i "s|^OPEN_WEATHER_API_KEY=.*|OPEN_WEATHER_API_KEY=\$OPEN_WEATHER_API_KEY|" \$ENV_FILE
 fi
 
-read -p "APP_NAME: " APP_NAME
-read -p "APP_ENV (e.g. production): " APP_ENV
-read -p "APP_URL (e.g. https://cpms.example.com): " APP_URL
-read -p "DB_DATABASE: " DB_DATABASE
-read -p "DB_USERNAME: " DB_USERNAME
-read -s -p "DB_PASSWORD: " DB_PASSWORD; echo
-read -p "MAIL_HOST: " MAIL_HOST
-read -p "MAIL_PORT: " MAIL_PORT
-read -p "MAIL_USERNAME: " MAIL_USERNAME
-read -s -p "MAIL_PASSWORD: " MAIL_PASSWORD; echo
-read -p "MAIL_ENCRYPTION (tls/ssl): " MAIL_ENCRYPTION
-read -p "AWS_ACCESS_KEY_ID: " AWS_ACCESS_KEY_ID
-read -p "AWS_SECRET_ACCESS_KEY: " AWS_SECRET_ACCESS_KEY
-read -p "AWS_DEFAULT_REGION: " AWS_DEFAULT_REGION
-read -p "AWS_BUCKET: " AWS_BUCKET
-read -p "AWS_URL: " AWS_URL
-read -p "OPEN_WEATHER_API_KEY: " OPEN_WEATHER_API_KEY
-
-log "🔧 Replacing environment values in .env"
-sed -i "s|^APP_NAME=.*|APP_NAME=\"\$APP_NAME\"|" \$ENV_FILE
-sed -i "s|^APP_ENV=.*|APP_ENV=\$APP_ENV|" \$ENV_FILE
-sed -i "s|^APP_URL=.*|APP_URL=\$APP_URL|" \$ENV_FILE
-sed -i "s|^DB_DATABASE=.*|DB_DATABASE=\$DB_DATABASE|" \$ENV_FILE
-sed -i "s|^DB_USERNAME=.*|DB_USERNAME=\$DB_USERNAME|" \$ENV_FILE
-sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=\$DB_PASSWORD|" \$ENV_FILE
-sed -i "s|^MAIL_HOST=.*|MAIL_HOST=\$MAIL_HOST|" \$ENV_FILE
-sed -i "s|^MAIL_PORT=.*|MAIL_PORT=\$MAIL_PORT|" \$ENV_FILE
-sed -i "s|^MAIL_USERNAME=.*|MAIL_USERNAME=\$MAIL_USERNAME|" \$ENV_FILE
-sed -i "s|^MAIL_PASSWORD=.*|MAIL_PASSWORD=\$MAIL_PASSWORD|" \$ENV_FILE
-sed -i "s|^MAIL_ENCRYPTION=.*|MAIL_ENCRYPTION=\$MAIL_ENCRYPTION|" \$ENV_FILE
-sed -i "s|^AWS_ACCESS_KEY_ID=.*|AWS_ACCESS_KEY_ID=\$AWS_ACCESS_KEY_ID|" \$ENV_FILE
-sed -i "s|^AWS_SECRET_ACCESS_KEY=.*|AWS_SECRET_ACCESS_KEY=\$AWS_SECRET_ACCESS_KEY|" \$ENV_FILE
-sed -i "s|^AWS_DEFAULT_REGION=.*|AWS_DEFAULT_REGION=\$AWS_DEFAULT_REGION|" \$ENV_FILE
-sed -i "s|^AWS_BUCKET=.*|AWS_BUCKET=\$AWS_BUCKET|" \$ENV_FILE
-sed -i "s|^AWS_URL=.*|AWS_URL=\$AWS_URL|" \$ENV_FILE
-sed -i "s|^OPEN_WEATHER_API_KEY=.*|OPEN_WEATHER_API_KEY=\$OPEN_WEATHER_API_KEY|" \$ENV_FILE
-
 cd \$APP_DIR
-log "🔑 Running Laravel key and Passport installation"
+log "🔑 Running Composer install, Laravel key and Passport installation"
+composer install --no-dev --optimize-autoloader
 php artisan key:generate
 php artisan passport:install
 
 log "🔒 Fixing permissions for storage and cache"
-chown -R www-data:www-data \$APP_DIR
-chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
+sudo chown -R www-data:www-data \$APP_DIR
+sudo chmod -R 775 \$APP_DIR/storage \$APP_DIR/bootstrap/cache
 
 log "✅ .env configured, Laravel keys generated, permissions fixed."
 
-if [ -d "/var/www/core/public" ]; then
+if [ -d "/var/www/cpms/public" ]; then
     log "🛠 Creating and enabling Apache vhost for core3003"
-    cat << 'EOVHOST' > /etc/apache2/sites-available/svrel.conf
+    cat << 'EOVHOST' | sudo tee /etc/apache2/sites-available/svrel.conf > /dev/null
 <VirtualHost *:80>
     ServerAdmin admin@caymanasracing.com
-    ServerName core3003.caymanasracing.com
-    ServerAlias core3003.caymanasracing.com
-    <Directory /var/www/core>
+    ServerName cpms3003.caymanasracing.com
+    ServerAlias cpms3003.caymanasracing.com
+    <Directory /var/www/cpms>
         Options Indexes FollowSymLinks MultiViews
         AllowOverride All
         Require all granted
     </Directory>
-    DocumentRoot "/var/www/core/public"
+    DocumentRoot "/var/www/cpms/public"
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Headers "Content-Type, X-CSRF-TOKEN, X-Requested-With, Authorization"
     ErrorLog \${APACHE_LOG_DIR}/error.log
@@ -208,15 +217,16 @@ if [ -d "/var/www/core/public" ]; then
 </VirtualHost>
 EOVHOST
 
-    a2dissite 000-default.conf
-    a2ensite svrel.conf
-    systemctl reload apache2
+    sudo a2dissite 000-default.conf
+    sudo a2ensite svrel.conf
+    sudo systemctl reload apache2
 
     log "✅ Apache virtual host 'svrel.conf' enabled."
 else
     log "⚠️ Skipping vhost setup — /var/www/core/public does not exist yet."
 fi
 EOF
+
 
 chmod +x /home/ubuntu/setup.sh
 chown ubuntu:ubuntu /home/ubuntu/setup.sh
